@@ -1,0 +1,15 @@
+# Jennifer projects are interpreted, so there are no build artifacts to ignore -
+# this covers a jennifer binary copied in locally, a downloaded corpus, saved
+# checkpoints, test temp files, plus the usual editor / OS cruft.
+/jennifer
+/jennifer-tiny
+/input.txt
+/model.json
+/model.ckpt
+*.tmp.json
+*.tmp.ckpt
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
