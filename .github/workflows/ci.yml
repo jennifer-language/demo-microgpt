@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  JENNIFER_REPO: https://github.com/jennifer-language/jennifer.git
+  JENNIFER_REF: main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this project
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build the Jennifer interpreter
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          git clone --depth 1 --branch "$JENNIFER_REF" "$JENNIFER_REPO" "$RUNNER_TEMP/jennifer"
+          ( cd "$RUNNER_TEMP/jennifer" && go build -o "$RUNNER_TEMP/bin/jennifer" ./cmd/jennifer )
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          # args.j is a system module; expose the repo's modules/ via -I
+          echo "JMOD=$RUNNER_TEMP/jennifer/modules" >> "$GITHUB_ENV"
+
+      - name: Show interpreter version
+        run: jennifer version
+
+      - name: Autograd gradient checks
+        run: jennifer test autograd_test.j
+
+      - name: Checkpoint round-trip checks
+        run: jennifer test checkpoint_test.j
+
+      - name: Train (parallel) + save a checkpoint
+        run: jennifer run -I "$JMOD" microgpt.j --steps 8 --batch 4 --save model.json --samples 5
+
+      - name: Reload the checkpoint and sample
+        run: jennifer run -I "$JMOD" sample.j --load model.json --samples 5
