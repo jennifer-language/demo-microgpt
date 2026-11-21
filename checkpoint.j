@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+# pragma-jennifer-version: >=0.27.0
+
 # demo-microgpt - checkpoint save / load, in two formats.
 #
 # A trained model is fully captured by three things: the model SHAPE (a few ints),
@@ -12,8 +16,6 @@
 #
 # Loading replays the saved floats through model.j's buildAllMatrices, so the
 # parameter leaf nodes are recreated in the exact same order they were trained in.
-#
-# jennifer: >=0.24.0
 
 include "./model.j";
 use json;
@@ -50,7 +52,9 @@ func checkShape(nl as int, ne as int, nh as int, bs as int) {
         throw Error{
             kind: "checkpoint",
             message: "checkpoint shape does not match this model build",
-            file: "", line: 0, col: 0
+            file: "",
+            line: 0,
+            col: 0
         };
     }
 }
@@ -69,7 +73,9 @@ func stageAndBuild(vocab as string, ps as list of float) {
         throw Error{
             kind: "checkpoint",
             message: "checkpoint parameter count does not match the model",
-            file: "", line: 0, col: 0
+            file: "",
+            line: 0,
+            col: 0
         };
     }
 }
@@ -78,7 +84,10 @@ func stageAndBuild(vocab as string, ps as list of float) {
 
 func saveJson(path as string) {
     def ck as Checkpoint init Checkpoint{
-        nLayer: NLAYER, nEmbd: NEMBD, nHead: NHEAD, blockSize: BLOCKSIZE,
+        nLayer: NLAYER,
+        nEmbd: NEMBD,
+        nHead: NHEAD,
+        blockSize: BLOCKSIZE,
         vocab: strings.join($uchars, ""),
         params: collectParams()
     };
@@ -88,8 +97,10 @@ func saveJson(path as string) {
 func loadJson(path as string) {
     def doc as json.Value init json.decode(fs.readString($path));
     checkShape(
-        json.asInt($doc, "/nLayer"), json.asInt($doc, "/nEmbd"),
-        json.asInt($doc, "/nHead"), json.asInt($doc, "/blockSize"));
+        json.asInt($doc, "/nLayer"),
+        json.asInt($doc, "/nEmbd"),
+        json.asInt($doc, "/nHead"),
+        json.asInt($doc, "/blockSize"));
     def ps as list of float init [];
     def np as int init json.length($doc, "/params");
     def i as int init 0;
@@ -108,9 +119,9 @@ func loadJson(path as string) {
 
 func saveFs(path as string) {
     def lines as list of string init [];
-    $lines[] = convert.toString(NLAYER) + " " + convert.toString(NEMBD) + " "
-        + convert.toString(NHEAD) + " " + convert.toString(BLOCKSIZE) + " "
-        + convert.toString($numParams);
+    $lines[] = convert.toString(NLAYER) + " " + convert.toString(NEMBD) + " " +
+        convert.toString(NHEAD) + " " + convert.toString(BLOCKSIZE) + " " +
+        convert.toString($numParams);
     $lines[] = strings.join($uchars, "");
     def i as int init 0;
     while ($i < $numParams) {
@@ -123,8 +134,11 @@ func saveFs(path as string) {
 func loadFs(path as string) {
     def lines as list of string init strings.split(fs.readString($path), "\n");
     def hdr as list of string init strings.split(strings.trim($lines[0]), " ");
-    checkShape(convert.toInt($hdr[0]), convert.toInt($hdr[1]),
-        convert.toInt($hdr[2]), convert.toInt($hdr[3]));
+    checkShape(
+        convert.toInt($hdr[0]),
+        convert.toInt($hdr[1]),
+        convert.toInt($hdr[2]),
+        convert.toInt($hdr[3]));
     def vocab as string init $lines[1];
     def ps as list of float init [];
     def i as int init 2;

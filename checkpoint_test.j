@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+# pragma-jennifer-version: >=0.27.0
+
 # checkpoint_test.j - round-trip tests for both checkpoint formats. Run with:
 #
 #     jennifer test checkpoint_test.j

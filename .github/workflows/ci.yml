@@ -4,13 +4,75 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  # Weekly, for the `drift` job below - the pinned `test` job is deterministic and
+  # would have nothing new to say.
+  schedule:
+    - cron: "0 6 * * 1"
 
 env:
   JENNIFER_REPO: https://github.com/jennifer-language/jennifer.git
-  JENNIFER_REF: main
+  # Pinned to a release, so a language change cannot turn this repository red
+  # without a line here changing. This is also the floor every .j file declares
+  # with `# pragma-jennifer-version: >=0.27.0`.
+  JENNIFER_PIN: "0.27.0"
 
 jobs:
   test:
+    name: test (pinned release)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this project
+        uses: actions/checkout@v4
+
+      # The release ships a .deb, so CI installs Jennifer the way a reader would:
+      # no Go toolchain, no clone, no build.
+      - name: Install the pinned Jennifer release
+        working-directory: ${{ runner.temp }}
+        run: |
+          base="https://github.com/jennifer-language/jennifer/releases/download/$JENNIFER_PIN"
+          deb="jennifer_${JENNIFER_PIN}_amd64.deb"
+          curl -fsSLO "$base/$deb"
+          curl -fsSLO "$base/$deb.sha256"
+          sha256sum -c "$deb.sha256"
+          sudo dpkg -i "$deb"
+
+      # A `-dev` build would satisfy every pragma floor, so assert the exact release.
+      - name: Verify the interpreter is the pinned release
+        run: |
+          got=$(jennifer version)
+          echo "jennifer version: $got"
+          if [ "$got" != "$JENNIFER_PIN" ]; then
+            echo "::error::expected jennifer $JENNIFER_PIN, got '$got'"
+            exit 1
+          fi
+
+      - name: Format and lint
+        run: |
+          test -z "$(jennifer fmt -l *.j)" || { jennifer fmt -l *.j; exit 1; }
+          jennifer lint *.j
+
+      - name: Autograd gradient checks
+        run: jennifer test autograd_test.j
+
+      - name: Checkpoint round-trip checks
+        run: jennifer test checkpoint_test.j
+
+      - name: Train (parallel) and save a checkpoint
+        run: jennifer run microgpt.j --steps 8 --batch 4 --save model.json --samples 5
+
+      - name: Reload the checkpoint and sample
+        run: jennifer run sample.j --load model.json --samples 5
+
+      - name: Sample from the committed checkpoint
+        run: jennifer run sample.j --load 32k1000.json --samples 5
+
+  # Early warning, not a gate: the same checks against the language's `main`.
+  # A full clone and `make build-go`, so the version is stamped from the tags (an
+  # unstamped build reports "dev"); `make build` would also need TinyGo.
+  drift:
+    name: drift (jennifer main)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - name: Check out this project
@@ -21,26 +83,24 @@ jobs:
         with:
           go-version: stable
 
-      - name: Build the Jennifer interpreter
+      - name: Build the Jennifer interpreter from main
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
-          git clone --depth 1 --branch "$JENNIFER_REF" "$JENNIFER_REPO" "$RUNNER_TEMP/jennifer"
-          ( cd "$RUNNER_TEMP/jennifer" && go build -o "$RUNNER_TEMP/bin/jennifer" ./cmd/jennifer )
+          git clone --branch main "$JENNIFER_REPO" "$RUNNER_TEMP/jennifer"
+          ( cd "$RUNNER_TEMP/jennifer" && make build-go && cp jennifer "$RUNNER_TEMP/bin/jennifer" )
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-          # args.j is a system module; expose the repo's modules/ via -I
-          echo "JMOD=$RUNNER_TEMP/jennifer/modules" >> "$GITHUB_ENV"
+          echo "JENNIFER_SYSMODDIR=$RUNNER_TEMP/jennifer/modules" >> "$GITHUB_ENV"
 
       - name: Show interpreter version
         run: jennifer version
 
-      - name: Autograd gradient checks
-        run: jennifer test autograd_test.j
+      - name: Tests
+        run: |
+          jennifer test autograd_test.j
+          jennifer test checkpoint_test.j
 
-      - name: Checkpoint round-trip checks
-        run: jennifer test checkpoint_test.j
-
-      - name: Train (parallel) + save a checkpoint
-        run: jennifer run -I "$JMOD" microgpt.j --steps 8 --batch 4 --save model.json --samples 5
-
-      - name: Reload the checkpoint and sample
-        run: jennifer run -I "$JMOD" sample.j --load model.json --samples 5
+      - name: Train, reload, sample
+        run: |
+          jennifer run microgpt.j --steps 8 --batch 4 --save model.json --samples 5
+          jennifer run sample.j --load model.json --samples 5
+          jennifer run sample.j --load 32k1000.json --samples 5

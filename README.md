@@ -28,10 +28,10 @@ step 80 / 80  loss 2.3042
 saved json checkpoint -> model.json
 
 --- inference (new, hallucinated names) ---
-sample  1: jina
-sample  2: saran
-sample  3: marian
-sample  4: arani
+sample 1: jina
+sample 2: saran
+sample 3: marian
+sample 4: arani
 ...
 ```
 
@@ -47,7 +47,9 @@ does **not** have:
   semantics**: structs and lists are *copied* on assignment, so a node cannot be
   shared and mutated in place from two places.
 
-So the autograd (`autograd.j`) is an **arena / tape** design: every scalar is a
+So the autograd (`autograd.j`) is an **arena / tape** design, the same engine as
+[demo-micrograd](https://github.com/jennifer-language/demo-micrograd), copied
+verbatim from its `v8/` edition, where each step of its design is explained: every scalar is a
 `Node` in one global list `tape`, a node references its operands by integer
 **index**, forward appends nodes (which keeps the tape in topological order), and
 `backward` is a single reverse walk dispatching on an `Op` enum. A parameter reused
@@ -94,7 +96,12 @@ model and only runs inference - the fast "train once, sample many times" path.
 
 ## Running it
 
+Needs Jennifer 0.27.0 or newer.
+
 ```sh
+# sample from the checkpoint in the repository (trained on names.txt)
+jennifer run sample.j --load 32k1000.json --samples 20
+
 # train (parallel), save a JSON checkpoint, sample some names
 jennifer run microgpt.j --steps 200 --batch 8 --save model.json
 
@@ -130,12 +137,14 @@ checkpoint stays loadable.
 
 ## Files
 
-- `autograd.j` - the scalar reverse-mode autodiff engine (arena / tape).
+- `autograd.j` - the scalar reverse-mode autodiff engine (arena / tape), from
+  demo-micrograd's `v8/`; `autograd_test.j` comes with it.
 - `model.j` - the GPT model, tokenizer, and sampler (shared by trainer and sampler).
 - `checkpoint.j` - save / load in JSON and flat-text formats.
 - `microgpt.j` - the trainer: parallel data-parallel SGD + Adam, saves a checkpoint.
 - `sample.j` - loads a checkpoint and generates names (no training).
-- `autograd_test.j`, `checkpoint_test.j` - `jennifer test` overlays.
+- `checkpoint_test.j` - save / load round-trips, a `jennifer test` overlay.
+- `32k1000.json` - a checkpoint trained on the 32K names of `names.txt`.
 
 ## License
 

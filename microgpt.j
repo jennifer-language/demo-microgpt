@@ -1,4 +1,8 @@
 #!/usr/bin/env -S jennifer run
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+# pragma-jennifer-version: >=0.27.0
+
 # demo-microgpt - Karpathy's microGPT, ported to Jennifer, with data-parallel
 # training and checkpointing.
 #
@@ -17,8 +21,6 @@
 #
 # Usage:
 #   jennifer run microgpt.j --steps 200 --batch 8 --save model.json
-#
-# jennifer: >=0.24.0
 
 include "./checkpoint.j"; # brings model.j + autograd.j
 
@@ -34,10 +36,22 @@ use task;
 import "args.j" as args;
 
 # --- command line -------------------------------------------------------------
-def parser as args.Parser init args.parser("microgpt", "Train a char-level GPT on names and save a checkpoint");
+def parser as args.Parser init args.parser(
+    "microgpt",
+    "Train a char-level GPT on names and save a checkpoint");
 $parser = args.intFlag($parser, "steps", "s", 100, "training steps (parameter updates)");
-$parser = args.intFlag($parser, "batch", "b", os.NCPU, "documents per step, run in parallel (default: core count)");
-$parser = args.flag($parser, "input", "i", "input.txt", "training data (one name per line); falls back to a built-in list");
+$parser = args.intFlag(
+    $parser,
+    "batch",
+    "b",
+    os.NCPU,
+    "documents per step, run in parallel (default: core count)");
+$parser = args.flag(
+    $parser,
+    "input",
+    "i",
+    "input.txt",
+    "training data (one name per line); falls back to a built-in list");
 $parser = args.flag($parser, "save", "o", "model.json", "checkpoint output path");
 $parser = args.flag($parser, "format", "f", "json", "checkpoint format");
 $parser = args.choices($parser, ["json", "fs"]);
@@ -61,12 +75,54 @@ math.randSeed(42); # let there be order among chaos
 
 # --- a small default corpus (used when the input file is absent) --------------
 def const DEFAULTNAMES as list of string init [
-    "emma", "olivia", "ava", "isabella", "sophia", "mia", "amelia", "harper",
-    "evelyn", "abigail", "emily", "ella", "aria", "scarlett", "grace", "chloe",
-    "liam", "noah", "oliver", "elijah", "james", "william", "benjamin", "lucas",
-    "henry", "theodore", "jack", "levi", "mateo", "asher", "ethan", "daniel",
-    "luna", "aurora", "nova", "hazel", "zoe", "lily", "nora", "leah",
-    "mason", "logan", "jacob", "michael", "samuel", "david", "joseph", "carter"
+    "emma",
+    "olivia",
+    "ava",
+    "isabella",
+    "sophia",
+    "mia",
+    "amelia",
+    "harper",
+    "evelyn",
+    "abigail",
+    "emily",
+    "ella",
+    "aria",
+    "scarlett",
+    "grace",
+    "chloe",
+    "liam",
+    "noah",
+    "oliver",
+    "elijah",
+    "james",
+    "william",
+    "benjamin",
+    "lucas",
+    "henry",
+    "theodore",
+    "jack",
+    "levi",
+    "mateo",
+    "asher",
+    "ethan",
+    "daniel",
+    "luna",
+    "aurora",
+    "nova",
+    "hazel",
+    "zoe",
+    "lily",
+    "nora",
+    "leah",
+    "mason",
+    "logan",
+    "jacob",
+    "michael",
+    "samuel",
+    "david",
+    "joseph",
+    "carter"
 ];
 
 # --- dataset ------------------------------------------------------------------
@@ -140,17 +196,23 @@ def beta1 as float init 0.85;
 def beta2 as float init 0.99;
 def epsAdam as float init 1e-8;
 
-io.printf("training %d steps, batch %d (parallel across %d cores)...\n", $numSteps, $batch, os.NCPU);
+io.printf(
+    "training %d steps, batch %d (parallel across %d cores)...\n",
+    $numSteps,
+    $batch,
+    os.NCPU);
 def step as int init 0;
 while ($step < $numSteps) {
     resetTo($numParams); # the tape is just the params; each worker copies it
-
+    
     # fan out: BATCH documents, each gradient computed on its own core
     def jobs as list of task of GradResult init [];
     def w as int init 0;
     while ($w < $batch) {
         def docIdx as int init ($step * $batch + $w) % len($docs);
-        $jobs[] = spawn { return computeGrads($docIdx); };
+        $jobs[] = spawn {
+            return computeGrads($docIdx);
+        };
         $w = $w + 1;
     }
     def results as list of GradResult init task.waitAll($jobs);
@@ -165,7 +227,8 @@ while ($step < $numSteps) {
     $avgLoss = $avgLoss / convert.toFloat($batch);
 
     # Adam update on the averaged gradient
-    def lrT as float init $learningRate * (1.0 - convert.toFloat($step) / convert.toFloat($numSteps));
+    def lrT as float init $learningRate *
+        (1.0 - convert.toFloat($step) / convert.toFloat($numSteps));
     def bc1 as float init 1.0 - math.pow($beta1, convert.toFloat($step + 1));
     def bc2 as float init 1.0 - math.pow($beta2, convert.toFloat($step + 1));
     def i as int init 0;
@@ -186,7 +249,7 @@ while ($step < $numSteps) {
     }
 
     if (($step + 1) % 10 == 0) {
-        io.printf("step %d / %d  loss %f\n", $step + 1, $numSteps, $avgLoss);
+        io.printf("step %d / %d  loss %f|prec=4\n", $step + 1, $numSteps, $avgLoss);
     }
     $step = $step + 1;
 }

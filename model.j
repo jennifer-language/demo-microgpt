@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+# pragma-jennifer-version: >=0.27.0
+
 # demo-microgpt - the model: a char-level GPT-2-shape transformer on the scalar
 # autograd engine (autograd.j). Shared by the trainer (microgpt.j) and the
 # sampler (sample.j), so a checkpoint saved by one loads into the other.
@@ -6,8 +10,6 @@
 # fixed creation order (wte, wpe, lm_head, then per-layer). buildAllMatrices()
 # rebuilds them from a param SOURCE - random Gaussians when training, or the saved
 # floats when loading a checkpoint - which is what makes save / load exact.
-#
-# jennifer: >=0.24.0
 
 include "autograd.j";
 use math;
@@ -16,18 +18,18 @@ use strings;
 use convert;
 
 # --- model shape (fixed; a checkpoint records these and load verifies them) ---
-def const NLAYER as int init 1;               # transformer depth
-def const NEMBD as int init 8;                # embedding width
-def const NHEAD as int init 2;                # attention heads
+def const NLAYER as int init 1; # transformer depth
+def const NEMBD as int init 8; # embedding width
+def const NHEAD as int init 2; # attention heads
 def const HEADDIM as int init NEMBD // NHEAD; # per-head dimension
-def const BLOCKSIZE as int init 16;           # max context / attention window
+def const BLOCKSIZE as int init 16; # max context / attention window
 
 # --- tokenizer + parameter state (set at runtime) -----------------------------
-def uchars as list of string init [];         # token id -> character
-def bos as int init 0;                        # Beginning-Of-Sequence token id
+def uchars as list of string init []; # token id -> character
+def bos as int init 0; # Beginning-Of-Sequence token id
 def vocabSize as int init 0;
 def stateDict as map of string to list of list of int init {};
-def numParams as int init 0;                  # params are tape[0 .. numParams-1]
+def numParams as int init 0; # params are tape[0 .. numParams-1]
 def keysCache as list of list of list of int init [];
 def valuesCache as list of list of list of int init [];
 
@@ -235,6 +237,40 @@ func rmsnorm(x as list of int) {
     return $out;
 }
 
+# attentionHead runs one causal attention head over layer li's KV cache: the
+# scaled dot products of the query slice starting at `hs` with every cached key,
+# a softmax over them, and the weighted sum of the cached values. Returns the
+# head's HEADDIM output nodes.
+func attentionHead(q as list of int, li as int, hs as int, steps as int, invSqrt as float) {
+    def attnLogits as list of int init [];
+    def t as int init 0;
+    while ($t < $steps) {
+        def keyVec as list of int init $keysCache[$li][$t];
+        def dotacc as int init mul($q[$hs], $keyVec[$hs]);
+        def j as int init 1;
+        while ($j < HEADDIM) {
+            $dotacc = add($dotacc, mul($q[$hs + $j], $keyVec[$hs + $j]));
+            $j = $j + 1;
+        }
+        $attnLogits[] = mulc($dotacc, $invSqrt);
+        $t = $t + 1;
+    }
+    def weights as list of int init softmaxNodes($attnLogits);
+    def out as list of int init [];
+    def jj as int init 0;
+    while ($jj < HEADDIM) {
+        def acc as int init mul($weights[0], $valuesCache[$li][0][$hs + $jj]);
+        def tt as int init 1;
+        while ($tt < $steps) {
+            $acc = add($acc, mul($weights[$tt], $valuesCache[$li][$tt][$hs + $jj]));
+            $tt = $tt + 1;
+        }
+        $out[] = $acc;
+        $jj = $jj + 1;
+    }
+    return $out;
+}
+
 # gpt forwards one token at position posId, extending the KV cache, and returns
 # the logits over the next token.
 func gpt(tokenId as int, posId as int) {
@@ -262,30 +298,8 @@ func gpt(tokenId as int, posId as int) {
         def xAttn as list of int init [];
         def h as int init 0;
         while ($h < NHEAD) {
-            def hs as int init $h * HEADDIM;
-            def attnLogits as list of int init [];
-            def t as int init 0;
-            while ($t < $steps) {
-                def dotacc as int init mul($q[$hs], $keysCache[$li][$t][$hs]);
-                def j as int init 1;
-                while ($j < HEADDIM) {
-                    $dotacc = add($dotacc, mul($q[$hs + $j], $keysCache[$li][$t][$hs + $j]));
-                    $j = $j + 1;
-                }
-                $attnLogits[] = mulc($dotacc, $invSqrt);
-                $t = $t + 1;
-            }
-            def weights as list of int init softmaxNodes($attnLogits);
-            def jj as int init 0;
-            while ($jj < HEADDIM) {
-                def acc as int init mul($weights[0], $valuesCache[$li][0][$hs + $jj]);
-                def tt as int init 1;
-                while ($tt < $steps) {
-                    $acc = add($acc, mul($weights[$tt], $valuesCache[$li][$tt][$hs + $jj]));
-                    $tt = $tt + 1;
-                }
-                $xAttn[] = $acc;
-                $jj = $jj + 1;
+            for (def o in attentionHead($q, $li, $h * HEADDIM, $steps, $invSqrt)) {
+                $xAttn[] = $o;
             }
             $h = $h + 1;
         }

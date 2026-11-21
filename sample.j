@@ -1,4 +1,8 @@
 #!/usr/bin/env -S jennifer run
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+# pragma-jennifer-version: >=0.27.0
+
 # demo-microgpt - load a trained checkpoint and generate names (no training).
 #
 # This is the "train once, sample many times" half: it reconstructs the model from
@@ -8,8 +12,6 @@
 # Usage:
 #   jennifer run sample.j --load model.json --samples 20
 #   jennifer run sample.j --load model.ckpt --format fs
-#
-# jennifer: >=0.24.0
 
 include "./checkpoint.j"; # brings model.j + autograd.j
 use io;
@@ -19,7 +21,9 @@ use convert;
 
 import "args.j" as args;
 
-def parser as args.Parser init args.parser("sample", "Load a microGPT checkpoint and generate names");
+def parser as args.Parser init args.parser(
+    "sample",
+    "Load a microGPT checkpoint and generate names");
 $parser = args.flag($parser, "load", "l", "model.json", "checkpoint to load");
 $parser = args.flag($parser, "format", "f", "json", "checkpoint format");
 $parser = args.choices($parser, ["json", "fs"]);
@@ -42,7 +46,12 @@ if ($fmt == "json") {
 } else {
     loadFs($loadPath);
 }
-io.printf("loaded %s checkpoint <- %s  (vocab %d, %d params)\n", $fmt, $loadPath, $vocabSize, $numParams);
+io.printf(
+    "loaded %s checkpoint <- %s  (vocab %d, %d params)\n",
+    $fmt,
+    $loadPath,
+    $vocabSize,
+    $numParams);
 
 io.printf("\n--- sampled names (temperature %f) ---\n", $temperature);
 def si as int init 0;
